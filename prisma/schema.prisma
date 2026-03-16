@@ -1,0 +1,108 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- ENUMS ---
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TransactionStatus {
+  PENDING
+  MINTED
+  DELIVERED
+  FAILED
+}
+
+enum OffRampType {
+  OXXO
+  SPEI
+}
+
+enum VoucherStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+}
+
+// --- MODELOS ---
+model User {
+  id              String        @id @default(uuid())
+  email           String?       @unique
+  phone           String        @unique
+  hederaAccountId String?       @unique
+  kycStatus       KycStatus     @default(PENDING)
+  createdAt       DateTime      @default(now())
+  
+  // Relaciones
+  transactions    Transaction[]
+
+  @@map("users")
+}
+
+model Transaction {
+  id            String            @id @default(uuid())
+  senderId      String
+  sender        User              @relation(fields: [senderId], references: [id])
+  receiverPhone String
+  amountUsd     Decimal
+  amountMxnh    Decimal
+  exchangeRate  Decimal
+  protocolFee   Decimal
+  status        TransactionStatus @default(PENDING)
+  hederaTxId    String?           @unique
+  hcsMessageId  String?
+  offRampType   OffRampType
+  voucherCode   String?           @unique // Desnormalizado para búsquedas rápidas, opcional
+  isoMessageId  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  
+  // Relaciones
+  voucher       Voucher?
+
+  @@map("transactions")
+}
+
+model Voucher {
+  id            String        @id @default(uuid())
+  transactionId String        @unique
+  transaction   Transaction   @relation(fields: [transactionId], references: [id])
+  code          String        @unique
+  expiresAt     DateTime
+  redeemedAt    DateTime?
+  status        VoucherStatus @default(ACTIVE)
+
+  @@map("vouchers")
+}
+
+model SdkClient {
+  id                String   @id @default(uuid())
+  name              String
+  apiKey            String   @unique
+  webhookUrl        String?
+  isActive          Boolean  @default(true)
+  totalTransactions Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  @@map("sdk_clients")
+}
+
+model ReserveProof {
+  id                   String   @id @default(uuid())
+  totalMxnhCirculating Decimal
+  totalMxnReserve      Decimal
+  ratio                Decimal
+  hcsMessageId         String   @unique
+  verifiedAt           DateTime @default(now())
+
+  @@map("reserve_proofs")
+}

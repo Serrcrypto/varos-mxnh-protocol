@@ -1,0 +1,36 @@
+{
+  "name": "varos-protocol",
+  "version": "1.0.0",
+  "description": "Varos MXNH Payment Protocol",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@hashgraph/sdk": "^2.38.0",
+    "@hashgraph/stablecoin-npm-contracts": "^1.2.0",
+    "@neondatabase/serverless": "^0.9.0",
+    "@prisma/adapter-neon": "^5.11.0",
+    "@prisma/client": "^5.11.0",
+    "axios": "^1.6.8",
+    "bullmq": "^5.7.8",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.8.2",
+    "ioredis": "^5.3.2",
+    "stripe": "^14.21.0",
+    "twilio": "^5.0.3",
+    "ws": "^8.19.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
+    "prisma": "^5.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.3"
+  }
+}
