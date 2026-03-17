@@ -1,29 +1,36 @@
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import * as dotenv from 'dotenv';
+import * as dotenv from "dotenv";
+dotenv.config(); // Primero cargar variables de entorno
 
-// Cargar variables de entorno
-dotenv.config();
+import Fastify from "fastify";
+import hederaRoutes from "./routes/hedera";
 
 const server = Fastify({
-  logger: true // Útil para ver logs de las peticiones en consola
+  logger: {
+    transport: {
+      target: "pino-pretty",
+      options: { translateTime: "HH:MM:ss Z", ignore: "pid,hostname" },
+    },
+  },
 });
 
-// Registrar CORS para permitir peticiones del frontend
-server.register(cors);
+// Registramos las rutas de Hedera (una sola vez)
+server.register(hederaRoutes);
 
-// Endpoint de Health Check
-server.get('/health', async (request, reply) => {
-  return 'Varos MXNH Protocol API running';
+server.get("/health", async (request, reply) => {
+  return {
+    status: "ok",
+    message: "🚀 Varos MXNH Protocol API running",
+  };
 });
 
-// Inicialización del servidor
 const start = async () => {
   try {
-    const port = parseInt(process.env.PORT || '3000', 10);
-    
-    await server.listen({ port, host: '0.0.0.0' });
-    console.log(`🚀 Protocolo Varos corriendo en http://localhost:${port}`);
+    const port = Number(process.env.PORT) || 3000;
+    await server.listen({ port, host: "0.0.0.0" });
+    console.log(`\n=================================================`);
+    console.log(`🟢 Servidor activo en http://localhost:${port}`);
+    console.log(`🔑 Mint: POST /hedera/test-mint`);
+    console.log(`=================================================\n`);
   } catch (err) {
     server.log.error(err);
     process.exit(1);
