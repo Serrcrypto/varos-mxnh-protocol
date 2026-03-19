@@ -1,8 +1,10 @@
 import * as dotenv from "dotenv";
-dotenv.config(); // Primero cargar variables de entorno
+dotenv.config();
 
 import Fastify from "fastify";
+import rawBody from "fastify-raw-body";
 import hederaRoutes from "./routes/hedera";
+import paymentRoutes from "./routes/payments";
 
 const server = Fastify({
   logger: {
@@ -13,14 +15,18 @@ const server = Fastify({
   },
 });
 
-// Registramos las rutas de Hedera (una sola vez)
+// Raw body necesario para verificar la firma del webhook de Stripe
+server.register(rawBody, {
+  field: "rawBody",
+  global: false,
+  runFirst: true,
+});
+
 server.register(hederaRoutes);
+server.register(paymentRoutes);
 
 server.get("/health", async (request, reply) => {
-  return {
-    status: "ok",
-    message: "🚀 Varos MXNH Protocol API running",
-  };
+  return { status: "ok", message: "🚀 Varos MXNH Protocol API running" };
 });
 
 const start = async () => {
@@ -30,6 +36,7 @@ const start = async () => {
     console.log(`\n=================================================`);
     console.log(`🟢 Servidor activo en http://localhost:${port}`);
     console.log(`🔑 Mint: POST /hedera/test-mint`);
+    console.log(`💳 Pagos: POST /payments/create-intent`);
     console.log(`=================================================\n`);
   } catch (err) {
     server.log.error(err);
