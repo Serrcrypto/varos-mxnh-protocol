@@ -6,6 +6,7 @@ import rawBody from "fastify-raw-body";
 import hederaRoutes from "./routes/hedera";
 import paymentRoutes from "./routes/payments";
 import voucherRoutes from "./routes/vouchers";
+import offrampRoutes from "./routes/offramp"; // ← NUEVO
 
 const server = Fastify({
   logger: {
@@ -26,6 +27,7 @@ server.register(rawBody, {
 server.register(hederaRoutes);
 server.register(paymentRoutes);
 server.register(voucherRoutes);
+server.register(offrampRoutes);
 
 server.get("/health", async (request, reply) => {
   return { status: "ok", message: "🚀 Varos MXNH Protocol API running" };
