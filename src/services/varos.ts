@@ -14,14 +14,15 @@ import { mintMXNH } from "../hedera/token";
 import { logTransaction } from "../hedera/hcs";
 import { createVoucher, Voucher } from "../services/voucher";
 import { sendPaymentNotification } from "../notifications/twilio";
+import { getMxnUsdRate } from "../fx/oracle";
 
 // ─── TIPOS ──────────────────────────────────────────────────────────────────
 
 // Datos que llegan del webhook de Stripe cuando un pago es exitoso
 export interface PaymentData {
-  amountUsd: number;         // Monto pagado en dólares
-  receiverPhone: string;     // Teléfono del receptor en México
-  sdkClientId?: string;      // ID de la fintech que originó la tx (opcional)
+  amountUsd: number; // Monto pagado en dólares
+  receiverPhone: string; // Teléfono del receptor en México
+  sdkClientId?: string; // ID de la fintech que originó la tx (opcional)
   stripePaymentIntentId: string; // ID del PaymentIntent de Stripe
 }
 
@@ -30,19 +31,19 @@ export interface TransactionResult {
   success: boolean;
   status: "MINTED" | "FAILED";
   error?: string;
-  failedStep?: string;       // En qué paso falló (para debugging)
+  failedStep?: string; // En qué paso falló (para debugging)
   data?: {
     amountUsd: number;
     amountMxnh: number;
     exchangeRate: number;
     protocolFee: number;
-    transactionId: string;   // TX de Hedera
-    hcsSequence: string;     // Secuencia en HCS
+    transactionId: string; // TX de Hedera
+    hcsSequence: string; // Secuencia en HCS
     voucher: {
       code: string;
       expiresAt: Date;
     };
-    smsDelivered: boolean;   // Si el SMS se envió (puede fallar sin romper el flujo)
+    smsDelivered: boolean; // Si el SMS se envió (puede fallar sin romper el flujo)
   };
 }
 
@@ -77,7 +78,9 @@ const transactionStore = new Map<string, TransactionRecord>();
 // Orquesta todo el proceso cuando llega un pago exitoso de Stripe.
 // Cada paso tiene try/catch individual para saber exactamente dónde falla.
 
-export async function processPayment(payment: PaymentData): Promise<TransactionResult> {
+export async function processPayment(
+  payment: PaymentData,
+): Promise<TransactionResult> {
   const txRecord: TransactionRecord = {
     id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     amountUsd: payment.amountUsd,
@@ -99,9 +102,17 @@ export async function processPayment(payment: PaymentData): Promise<TransactionR
     // ═══════════════════════════════════════════════════════════════════════
     // PASO 1: Calcular monto en MXNH usando tipo de cambio
     // ═══════════════════════════════════════════════════════════════════════
-    // Por ahora tipo de cambio fijo. En Etapa 4 se conecta al oracle Chainlink.
-    const exchangeRate = 17.5; // MXN por USD
-    const amountMxnh = parseFloat((payment.amountUsd * exchangeRate).toFixed(2));
+    // Por ahora tipo de cambio fijo. En Etapa 4 COMPLETADA se conecta al oracle Chainlink.
+    const fxData = await getMxnUsdRate();
+    const exchangeRate = fxData.rateWithSpread;
+    const amountMxnh = parseFloat(
+      (payment.amountUsd * exchangeRate).toFixed(2),
+    );
+
+    console.log(
+      `📊 Tipo de cambio: ${fxData.rate} MXN (fuente: ${fxData.source}, spread: ${fxData.rateWithSpread})`,
+    );
+    // Fee del protocolo
     const protocolFee = parseFloat((amountMxnh * 0.005).toFixed(2)); // 0.5%
 
     txRecord.amountMxnh = amountMxnh;
@@ -110,7 +121,9 @@ export async function processPayment(payment: PaymentData): Promise<TransactionR
 
     console.log(`\n══════════════════════════════════════════`);
     console.log(`📋 NUEVA TRANSACCIÓN: ${txRecord.id}`);
-    console.log(`💵 $${payment.amountUsd} USD × ${exchangeRate} = ${amountMxnh} MXNH`);
+    console.log(
+      `💵 $${payment.amountUsd} USD × ${exchangeRate} = ${amountMxnh} MXNH`,
+    );
     console.log(`💰 Fee protocolo: ${protocolFee} MXNH (0.5%)`);
     console.log(`══════════════════════════════════════════\n`);
 
@@ -157,7 +170,7 @@ export async function processPayment(payment: PaymentData): Promise<TransactionR
         amountMxnh,
         payment.receiverPhone,
         transactionId,
-        hcsSequence
+        hcsSequence,
       );
       txRecord.voucherCode = voucher.code;
       console.log(`✅ Paso 4: Voucher creado → ${voucher.code}`);
@@ -176,10 +189,12 @@ export async function processPayment(payment: PaymentData): Promise<TransactionR
       const smsResult = await sendPaymentNotification(
         payment.receiverPhone,
         amountMxnh,
-        voucher.code
+        voucher.code,
       );
       smsDelivered = smsResult.success;
-      console.log(`${smsDelivered ? "✅" : "⚠️"} Paso 5: SMS ${smsDelivered ? "enviado" : "no enviado (no crítico)"}`);
+      console.log(
+        `${smsDelivered ? "✅" : "⚠️"} Paso 5: SMS ${smsDelivered ? "enviado" : "no enviado (no crítico)"}`,
+      );
     } catch (error: any) {
       console.warn(`⚠️ Paso 5: SMS falló (no crítico): ${error.message}`);
     }
@@ -223,7 +238,7 @@ export async function processPayment(payment: PaymentData): Promise<TransactionR
 function failTransaction(
   txRecord: TransactionRecord,
   step: string,
-  errorMessage: string
+  errorMessage: string,
 ): TransactionResult {
   txRecord.status = "FAILED";
   txRecord.failedStep = step;
@@ -249,6 +264,6 @@ export function getTransaction(id: string): TransactionRecord | undefined {
 
 export function getAllTransactions(): TransactionRecord[] {
   return Array.from(transactionStore.values()).sort(
-    (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
   );
 }
