@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-varos-cream text-varos-navy;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  input,
+  select,
+  textarea {
+    @apply text-varos-navy;
+  }
+}

@@ -61,44 +61,49 @@ export default async function paymentRoutes(server: FastifyInstance) {
 
   // ─── POST /payments/create-intent ───────────────────────────────────────
   // Crea un PaymentIntent para cobrar USD al emisor.
-  // El frontend usa el clientSecret devuelto para mostrar el formulario de pago.
-  server.post<{ Body: CreateIntentBody }>(
-    "/payments/create-intent",
-    async (request, reply) => {
-      try {
-        const { amountUsd, receiverPhone, sdkClientId, connectedAccountId } =
-          request.body;
+  // Acepta formato del frontend { amount, currency } o formato completo
+  // { amountUsd, receiverPhone, sdkClientId, connectedAccountId }
+  server.post("/payments/create-intent", async (request, reply) => {
+    try {
+      const body = request.body as any;
 
-        if (!amountUsd || amountUsd <= 0) {
-          return reply
-            .status(400)
-            .send({ error: "amountUsd debe ser mayor a 0" });
-        }
-
-        if (!receiverPhone || !sdkClientId || !connectedAccountId) {
-          return reply.status(400).send({
-            error:
-              "receiverPhone, sdkClientId y connectedAccountId son requeridos",
-          });
-        }
-
-        const result = await createPaymentIntent(amountUsd, {
-          receiverPhone,
-          sdkClientId,
-          connectedAccountId,
-        });
-
-        return {
-          success: true,
-          message: "PaymentIntent creado. Usa clientSecret en el frontend.",
-          data: result,
-        };
-      } catch (error: any) {
-        server.log.error(error);
-        return reply.status(500).send({ success: false, error: error.message });
+      // Aceptar ambos formatos: { amount (cents) } o { amountUsd }
+      let amountUsd: number;
+      if (body.amountUsd) {
+        amountUsd = body.amountUsd;
+      } else if (body.amount) {
+        amountUsd = body.amount / 100; // Convertir de centavos a dólares
+      } else {
+        return reply
+          .status(400)
+          .send({ error: "amount o amountUsd es requerido" });
       }
-    },
-  );
+
+      if (amountUsd <= 0) {
+        return reply.status(400).send({ error: "El monto debe ser mayor a 0" });
+      }
+
+      // Campos opcionales para el frontend de la app de referencia
+      const receiverPhone = body.receiverPhone || "+520000000000";
+      const sdkClientId = body.sdkClientId || "app-demo";
+      const connectedAccountId = body.connectedAccountId || undefined;
+
+      const result = await createPaymentIntent(amountUsd, {
+        receiverPhone,
+        sdkClientId,
+        connectedAccountId,
+      });
+
+      return {
+        success: true,
+        message: "PaymentIntent creado. Usa clientSecret en el frontend.",
+        data: result,
+      };
+    } catch (error: any) {
+      server.log.error(error);
+      return reply.status(500).send({ success: false, error: error.message });
+    }
+  });
 
   // ─── POST /payments/webhook ─────────────────────────────────────────────
   // Stripe envía eventos aquí cuando algo pasa con un pago.

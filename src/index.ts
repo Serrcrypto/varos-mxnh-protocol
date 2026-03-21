@@ -9,6 +9,7 @@ import voucherRoutes from "./routes/vouchers";
 import offrampRoutes from "./routes/offramp";
 import fxRoutes from "./routes/fx";
 import sdkRoutes from "./routes/sdk";
+import cors from "@fastify/cors";
 
 const server = Fastify({
   logger: {
@@ -32,6 +33,7 @@ server.register(voucherRoutes);
 server.register(offrampRoutes);
 server.register(fxRoutes);
 server.register(sdkRoutes);
+server.register(cors, { origin: true });
 
 server.get("/health", async (request, reply) => {
   return { status: "ok", message: "🚀 Varos MXNH Protocol API running" };
