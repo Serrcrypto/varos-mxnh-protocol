@@ -1,5 +1,5 @@
 import { TopicMessageSubmitTransaction } from "@hashgraph/sdk";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
 import { client } from "./client";
 
 export interface Iso20022Message {
@@ -30,7 +30,7 @@ export async function logTransaction(data: Iso20022Message): Promise<string> {
 
     // Auto-completar estándares ISO si no se enviaron
     const payload = {
-      MsgId: data.MsgId || uuidv4(),
+      MsgId: data.MsgId || randomUUID(),
       CreDtTm: data.CreDtTm || new Date().toISOString(),
       ...data,
     };
