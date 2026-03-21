@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "description": "Varos MXNH Payment Protocol",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "prisma:generate": "prisma generate"
@@ -26,6 +29,7 @@
     "twilio": "^5.13.0",
     "uuid": "^13.0.0",
     "ws": "^8.19.0",
+    "pino-pretty": "^13.0.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
