@@ -3,7 +3,7 @@
 // Endpoints para gestión de vouchers de cobro en OXXO y SPEI.
 //
 // Flujo completo:
-// 1. Se mintea MXNH → se crea voucher → se envía SMS al receptor
+// 1. Se recibe USD → oracle convierte a MXNH → se mintea → se crea voucher → SMS
 // 2. Receptor consulta GET /voucher/:code para ver su monto
 // 3. Receptor cobra POST /voucher/:code/redeem → se genera pago OXXO,
 //    se quema MXNH en Hedera, se registra en HCS
@@ -15,11 +15,13 @@ import { mintMXNH, burnMXNH } from "../hedera/token";
 import { logTransaction } from "../hedera/hcs";
 import { generateOxxoPayment, generateSpeiTransfer } from "../payments/conekta";
 import { sendPaymentNotification } from "../notifications/twilio";
+import { getMxnUsdRate } from "../fx/oracle";
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
 interface CreateVoucherBody {
-  amountMxnh: number;      // Monto del voucher en MXNH
+  amountUsd?: number;      // Monto en USD (se convierte a MXNH con el oracle)
+  amountMxnh?: number;     // Monto directo en MXNH (si no viene amountUsd)
   receiverPhone: string;   // Teléfono del receptor (+52...)
 }
 
@@ -32,10 +34,33 @@ interface VoucherParams {
   code: string;  // Código del voucher (ABCD-EFGH-IJKL-MNOP)
 }
 
+// ─── ALMACÉN DE TRANSACCIONES DE VOUCHERS (en memoria para MVP) ────────────
+// Permite que /sdk/v1/tx/:id encuentre transacciones hechas vía voucher/create
+// En producción: tabla transactions en Prisma/Neon
+
+interface VoucherTransaction {
+  id: string;
+  type: string;
+  hederaTxId: string;
+  hcsSequence: string;
+  amountUsd: number | null;
+  amountMxnh: number;
+  exchangeRate: number | null;
+  protocolFee: number;
+  voucherCode: string;
+  receiverPhone: string;
+  status: string;
+  createdAt: Date;
+}
+
+// Exportamos para que sdk.ts pueda buscar aquí
+export const voucherTransactions = new Map<string, VoucherTransaction>();
+
 export default async function voucherRoutes(server: FastifyInstance) {
 
   // ─── POST /voucher/create ─────────────────────────────────────────────────
   // Crea un voucher después de un minteo exitoso.
+  // Acepta amountUsd (convierte con oracle) o amountMxnh (directo).
   // Mintea MXNH, genera el código, y envía SMS al receptor.
   // Protegido con x-api-key.
   server.post<{ Body: CreateVoucherBody }>(
@@ -51,23 +76,38 @@ export default async function voucherRoutes(server: FastifyInstance) {
           });
         }
 
-        const { amountMxnh, receiverPhone } = request.body;
+        const { amountUsd, amountMxnh: directMxnh, receiverPhone } = request.body;
 
-        if (!amountMxnh || amountMxnh <= 0) {
-          return reply.status(400).send({ error: "amountMxnh debe ser mayor a 0" });
-        }
         if (!receiverPhone) {
           return reply.status(400).send({ error: "receiverPhone es requerido" });
         }
 
+        // Calcular monto en MXNH: si viene amountUsd, convertir con oracle
+        let finalAmountMxnh: number;
+        let exchangeRate: number | null = null;
+
+        if (amountUsd && amountUsd > 0) {
+          // Usar oracle FX para convertir USD → MXNH
+          const rateData = await getMxnUsdRate();
+          exchangeRate = rateData.rateWithSpread;
+          finalAmountMxnh = parseFloat((amountUsd * exchangeRate).toFixed(2));
+          console.log(`💱 Conversión: $${amountUsd} USD × ${exchangeRate} = ${finalAmountMxnh} MXNH`);
+        } else if (directMxnh && directMxnh > 0) {
+          finalAmountMxnh = directMxnh;
+        } else {
+          return reply.status(400).send({
+            error: "amountUsd o amountMxnh (mayor a 0) es requerido",
+          });
+        }
+
         // 1. Mintear MXNH en Hedera
-        const txId = await mintMXNH(amountMxnh);
-        const feeValue = parseFloat((amountMxnh * 0.005).toFixed(2));
+        const txId = await mintMXNH(finalAmountMxnh);
+        const feeValue = parseFloat((finalAmountMxnh * 0.005).toFixed(2));
 
         // 2. Registrar en HCS con ISO 20022
         const hcsSequence = await logTransaction({
           MsgType: "MINT",
-          InstdAmt: { value: amountMxnh, currency: "MXN" },
+          InstdAmt: { value: finalAmountMxnh, currency: "MXN" },
           DbtrAcct: process.env.HEDERA_TREASURY_ID || null,
           CdtrAcct: process.env.HEDERA_TREASURY_ID || null,
           TxRef: txId,
@@ -78,11 +118,28 @@ export default async function voucherRoutes(server: FastifyInstance) {
         });
 
         // 3. Crear el voucher
-        const voucher = createVoucher(amountMxnh, receiverPhone, txId, hcsSequence);
+        const voucher = createVoucher(finalAmountMxnh, receiverPhone, txId, hcsSequence);
 
-        // 4. Enviar SMS al receptor (no falla si Twilio tiene límite)
+        // 4. Guardar en store local para que /sdk/v1/tx/:id lo encuentre
+        const vTx: VoucherTransaction = {
+          id: `vtx_${Date.now()}`,
+          type: "VOUCHER_MINT",
+          hederaTxId: txId,
+          hcsSequence,
+          amountUsd: amountUsd || null,
+          amountMxnh: finalAmountMxnh,
+          exchangeRate,
+          protocolFee: feeValue,
+          voucherCode: voucher.code,
+          receiverPhone,
+          status: "completed",
+          createdAt: new Date(),
+        };
+        voucherTransactions.set(txId, vTx);
+
+        // 5. Enviar SMS al receptor (no falla si Twilio tiene límite)
         try {
-          await sendPaymentNotification(receiverPhone, amountMxnh, voucher.code);
+          await sendPaymentNotification(receiverPhone, finalAmountMxnh, voucher.code);
         } catch (smsError) {
           console.warn("⚠️ SMS no enviado (límite trial o error):", smsError);
         }
@@ -92,7 +149,10 @@ export default async function voucherRoutes(server: FastifyInstance) {
           message: "Voucher creado y SMS enviado al receptor",
           data: {
             voucherCode: voucher.code,
-            amountMxnh: voucher.amountMxnh,
+            amountMxnh: finalAmountMxnh,
+            amountUsd: amountUsd || null,
+            exchangeRate,
+            protocolFee: feeValue,
             expiresAt: voucher.expiresAt,
             transactionId: txId,
             hcsSequence,

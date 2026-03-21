@@ -1,0 +1,21 @@
+{
+  "name": "@varos/mxnh-sdk",
+  "version": "0.1.0",
+  "description": "SDK para integrar el protocolo MXNH — el primer peso mexicano nativo en Hedera Hashgraph",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["hedera", "stablecoin", "mxn", "mexico", "payments", "remittances", "sdk"],
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

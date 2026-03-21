@@ -7,6 +7,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { mintMXNH, burnMXNH, getBalance } from "../hedera/token";
 import { logTransaction } from "../hedera/hcs";
+import { publishReserveProof } from "../hedera/reserve";
 
 // --- Tipos de los cuerpos (body) que esperan los endpoints POST ---
 
@@ -182,54 +183,43 @@ export default async function hederaRoutes(server: FastifyInstance) {
   );
 
   // ─── GET /hedera/reserve ──────────────────────────────────────────────────
-  // Devuelve la última prueba de reserva publicada en HCS.
-  // En lugar de llamar a publishReserveProof(), lee directamente del Mirror Node
-  // para mostrar lo que ya está on-chain — más honesto para un dashboard público.
+  // Calcula y publica una prueba de reserva EN VIVO.
+  // Consulta el balance real del Treasury en Hedera, asume colateral 1:1
+  // (en producción se conectaría a la cuenta bancaria), publica el proof
+  // en HCS y devuelve los datos.
+  //
+  // Para el MVP/hackathon: el balance del Treasury = MXNH en circulación,
+  // y asumimos que hay MXN equivalente en reserva (1:1).
   server.get("/hedera/reserve", async (request, reply) => {
     try {
-      const topicId = process.env.HEDERA_HCS_TOPIC_ID;
-      if (!topicId) throw new Error("HEDERA_HCS_TOPIC_ID no configurado");
+      const treasuryId = process.env.HEDERA_TREASURY_ID;
+      if (!treasuryId) throw new Error("HEDERA_TREASURY_ID no configurado");
 
-      // Mirror Node = API REST pública de Hedera para leer datos sin firmar transacciones
-      const url = `https://testnet.mirrornode.hedera.com/api/v1/topics/${topicId}/messages?order=desc&limit=1`;
-      const response = await fetch(url);
+      // 1. Obtener balance real del Treasury desde Hedera
+      const treasuryBalance = await getBalance(treasuryId);
 
-      if (!response.ok)
-        throw new Error("Error conectando al Hedera Mirror Node");
+      // 2. Para el MVP, la reserva en MXN es igual al balance de MXNH
+      //    En producción: consultar saldo bancario vía API del banco
+      const totalMxnh = treasuryBalance;
+      const totalMxnReserve = treasuryBalance; // 1:1 colateral
 
-      const data = (await response.json()) as MirrorNodeResponse;
+      // 3. Publicar la prueba de reserva en HCS (on-chain, inmutable)
+      const hcsSequence = await publishReserveProof(totalMxnh, totalMxnReserve);
 
-      // Si el topic está vacío todavía
-      if (!data.messages || data.messages.length === 0) {
-        return {
-          success: true,
-          message: "No hay pruebas de reserva publicadas aún.",
-        };
-      }
+      const ratio = totalMxnh > 0
+        ? parseFloat((totalMxnReserve / totalMxnh).toFixed(4))
+        : 1.0;
 
-      // El Mirror Node devuelve el contenido del mensaje en Base64 — hay que decodificarlo
-      const decodedMessage = Buffer.from(
-        data.messages[0].message,
-        "base64",
-      ).toString("utf-8");
-      const parsedIsoMessage = JSON.parse(decodedMessage);
+      console.log(`🛡️ Reserve Proof publicado: ${totalMxnh} MXNH / ${totalMxnReserve} MXN | Ratio: ${ratio}`);
 
-      // El último mensaje podría ser un MINT o BURN, no necesariamente una reserva
-      if (parsedIsoMessage.MsgType !== "RESERVE_PROOF") {
-        return {
-          success: true,
-          message: "El último mensaje en HCS no es una prueba de reserva.",
-          latestLog: parsedIsoMessage,
-        };
-      }
-
-      // Si sí es RESERVE_PROOF, devolver los datos completos
       return {
         success: true,
         data: {
-          sequenceNumber: data.messages[0].sequence_number,
-          timestamp: data.messages[0].consensus_timestamp,
-          proof: parsedIsoMessage,
+          totalMxnh,
+          totalMxnReserve,
+          ratio,
+          hcsSequence,
+          timestamp: new Date().toISOString(),
         },
       };
     } catch (error: any) {
