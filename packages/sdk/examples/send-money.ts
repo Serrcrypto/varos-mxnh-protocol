@@ -16,7 +16,7 @@ import { VarosSDK } from "../src";
 // vía POST /sdk/v1/register. Para esta demo usamos la TEST_API_KEY.
 const API_KEY = "vr_live_8f7d6c5b4a392018"; // ← Pon aquí tu TEST_API_KEY del .env
 const BASE_URL = "http://localhost:3000";
-const RECEIVER_PHONE = "+522381778423"; // Teléfono del receptor en México
+const RECEIVER_PHONE = "+520000000000"; // Teléfono del receptor en México
 
 async function main() {
   console.log("═══════════════════════════════════════════════════════════");
