@@ -365,6 +365,14 @@ varos-mxnh-protocol/
 
 ## Hackathon
 
+Pitch Deck PDF: https://drive.google.com/file/d/1dx2HJPToRq8i0jvkfaVBlZpBBSu4U95A/
+
+URL Video Demo: https://youtu.be/dNmjiGGCwPQ
+
+Team:
+Sury Bonfil
+Jibsam Serrano
+
 **Hedera Apex 2026** — DeFi & Tokenization Track
 Deadline: March 23, 2026
 
