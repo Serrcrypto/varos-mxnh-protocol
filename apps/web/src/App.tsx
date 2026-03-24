@@ -8,6 +8,7 @@ import { Pay } from "./pages/Pay";
 import { Send } from "./pages/Send";
 import { Success } from "./pages/Success";
 import type { ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/react"; //Analytics vercel
 
 function AppShell() {
   return (
@@ -48,31 +49,34 @@ function RequireCommittedTransfer({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route path="/" element={<Home />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route
-          path="/send"
-          element={
-            <RequireWallet>
-              <Send />
-            </RequireWallet>
-          }
-        />
-        <Route
-          path="/pay"
-          element={
-            <RequireWallet>
-              <RequireCommittedTransfer>
-                <Pay />
-              </RequireCommittedTransfer>
-            </RequireWallet>
-          }
-        />
-        <Route path="/success" element={<Success />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route
+            path="/send"
+            element={
+              <RequireWallet>
+                <Send />
+              </RequireWallet>
+            }
+          />
+          <Route
+            path="/pay"
+            element={
+              <RequireWallet>
+                <RequireCommittedTransfer>
+                  <Pay />
+                </RequireCommittedTransfer>
+              </RequireWallet>
+            }
+          />
+          <Route path="/success" element={<Success />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+      <Analytics />
+    </>
   );
 }
